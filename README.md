@@ -1,4 +1,8 @@
 ## Global_2023-Edge
+# Equipe
+RM551715 - Leonardo Viotti Bonini
+RM551189 - Luisa Cristina dos Santos Neves
+
 # O Problema
 
 Infelizmente nos dias de hoje é muito comum ao ir a um pronto socorro ficar esperando horas e horas para ser atendido e tomar medicamentos, e apesar de terem diversos aplicativos para ajudar com agendamento de consultas não achamos nada muito concreto para ajudar nas horas da emergência. Por isso desenvolvemos o Check-H como nosso maior diferencial e destaque ajudar a acelerar os processos de check-in e check-up em um hospital, poupando muito tempo de um paciente.
