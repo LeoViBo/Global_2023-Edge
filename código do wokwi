@@ -1,0 +1,187 @@
+// Learn about the ESP32 WiFi simulation in
+
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <LiquidCrystal_I2C.h>
+
+// Confirguração do LCD
+LiquidCrystal_I2C LCD = LiquidCrystal_I2C(0x27, 16, 4);
+
+// Confirguração do Botão
+const int PushButton = 23;
+
+// Configurações de WiFi
+const char *SSID = "Wokwi-GUEST";
+const char *PASSWORD = "";  // Substitua pelo sua senha
+
+// Configurações de MQTT
+const char *BROKER_MQTT = "broker.hivemq.com";
+const int BROKER_PORT = 1883;
+const char *ID_MQTT = "checkH_mqtt";
+const char *TOPIC_SUBSCRIBE = "nome_hospital/ambulancia/entrada";
+const char *TOPIC_PUBLISH = "nome_hospital/ambulancia/xxx";
+
+// Variáveis globais
+WiFiClient espClient;
+PubSubClient MQTT(espClient);
+bool em_trabalho = false;
+bool com_paciente = false;
+int mqtt_call = 0;
+String nome = "";
+String idade = "";
+String sintomas = "";
+String local = "";
+
+// Protótipos de funções
+void callbackMQTT(char *topic, byte *payload, unsigned int length);
+void reconnectMQTT();
+void reconnectWiFi();
+void checkWiFIAndMQTT();
+
+void callbackMQTT(char *topic, byte *payload, unsigned int length) {
+  String msg = String((char*)payload).substring(0, length);
+  em_trabalho = true;
+  if (mqtt_call == 0){
+    nome = msg;
+    LCD.setCursor(0, 0);
+    LCD.print(msg.c_str());
+    mqtt_call++;
+  } else if (mqtt_call == 1){
+    idade = msg;
+    LCD.setCursor(0, 1);
+    LCD.print(msg.c_str());
+    mqtt_call++;
+  } else if (mqtt_call == 2){
+    sintomas = msg;
+    LCD.setCursor(0, 2);
+    LCD.print(msg.c_str());
+    mqtt_call++;
+  } else{
+    local = msg;
+    LCD.setCursor(0, 3);
+    LCD.print(msg.c_str());
+    mqtt_call++;
+  }
+}
+
+void reconnectMQTT() {
+  while (!MQTT.connected()) {
+    Serial.print("Tentando conectar com o Broker MQTT: ");
+    Serial.println(BROKER_MQTT);
+
+    if (MQTT.connect(ID_MQTT)) {
+      Serial.println("Conectado ao broker MQTT!");
+      MQTT.subscribe(TOPIC_SUBSCRIBE);
+    } else {
+      Serial.println("Falha na conexão com MQTT. Tentando novamente em 2 segundos.");
+      delay(2000);
+    }
+  }
+}
+
+void checkWiFIAndMQTT() {
+  if (WiFi.status() != WL_CONNECTED) reconnectWiFi();
+  if (!MQTT.connected()) reconnectMQTT();
+}
+
+void reconnectWiFi(void) {
+  LCD.clear();
+  LCD.setCursor(0, 0);
+  LCD.print("Conectando ");
+  LCD.setCursor(0, 1);
+  LCD.print("o WiFi ");
+  Serial.print(("Conectando"));
+  WiFi.begin(SSID, PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(2000);
+    Serial.print(".");
+  }
+
+  LCD.clear();
+  LCD.setCursor(0, 0);
+  LCD.print("Wifi conectado!");
+  delay(2000);
+  LCD.clear();
+}
+
+void setup() {
+  // Setando as partes
+  Serial.begin(115200);
+  pinMode(PushButton, INPUT_PULLUP);
+  LCD.init();
+  LCD.backlight();
+
+  // Conectando no wifi
+  LCD.setCursor(0, 0);
+  LCD.print("Conectando ");
+  LCD.setCursor(0, 1);
+  LCD.print("o WiFi ");
+  Serial.print(("Conectando"));
+  WiFi.begin(SSID, PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(2000);
+    Serial.print(".");
+  }
+  LCD.clear();
+  LCD.setCursor(0, 0);
+  LCD.print("Wifi conectado!");
+  delay(2000);
+  LCD.clear();
+
+  // Conectando no MQTT
+  MQTT.setServer(BROKER_MQTT, BROKER_PORT);
+  MQTT.setCallback(callbackMQTT);
+  MQTT.subscribe(TOPIC_SUBSCRIBE);
+}
+
+void loop() {
+  int Push_button_state = digitalRead(PushButton);
+  checkWiFIAndMQTT();
+  MQTT.loop();
+  
+  // Verifica se o botão foi clicado enquanto está a caminho de um paciênte para avisar ao paciente
+  // chegou no local
+  if (Push_button_state == LOW && em_trabalho == true){
+    MQTT.publish(TOPIC_PUBLISH, "Ambulância chegou.");
+    LCD.clear();
+    LCD.setCursor(0, 0);
+    LCD.print("Avisando");
+    LCD.setCursor(0, 1);
+    LCD.print("chegada...");
+    delay(3000);
+    LCD.clear();
+    LCD.setCursor(0, 0);
+    LCD.print(nome);
+    LCD.setCursor(0, 1);
+    LCD.print(idade);
+    LCD.setCursor(0, 2);
+    LCD.print(sintomas);
+    LCD.setCursor(0, 3);
+    LCD.print(local);
+    em_trabalho = false;
+    com_paciente = true;
+  } 
+  // Menu de base que avisa a pró´ria ambulância que não tem emergencias no momento
+  else if (em_trabalho == false && com_paciente == false){
+    LCD.clear();
+    LCD.setCursor(0, 0);
+    LCD.print("Sem");
+    LCD.setCursor(0, 1);
+    LCD.print("emergencias");
+    delay(2000);
+  } 
+  // Caso clique o botão e esteja a caminho do hospital avisa o hospital que o paciênte
+  // foi deixado no hospital
+  else if (Push_button_state == LOW){
+    MQTT.publish("nome_hospital/entrada", "Paciente de ambulancia chegou.");
+    LCD.clear();
+    LCD.setCursor(0, 0);
+    LCD.print("Paciente entregue");
+    LCD.setCursor(0, 1);
+    LCD.print("no hospital!");
+    delay(2000);
+    LCD.clear();
+    mqtt_call = 0;
+    com_paciente = false;
+  }
+}
